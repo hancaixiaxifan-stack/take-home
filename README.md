@@ -1,30 +1,130 @@
-# 实现说明
+# 微型物业派单系统
 
-## 启动
+接收业主自由文本报修，LLM 解析关键字段，按规则派单，Mock 通知，MongoDB 持久化。
+
+## 前置条件
+
+- **Docker**：需安装 Docker Desktop（或 Docker Engine + Docker Compose V2）
+- **DeepSeek API Key**：前往 [platform.deepseek.com](https://platform.deepseek.com) 注册并创建 API Key（本项目全程调用成本 < $0.01）
+
+## 快速启动（Docker）
 
 ```bash
+# 1. 克隆仓库
+git clone https://github.com/hancaixiaxifan-stack/take-home.git
+cd take-home
+
+# 2. 创建环境变量文件
+cp .env.example .env
+
+# 3. 编辑 .env，将 sk-your-key-here 替换为真实的 DeepSeek API Key
+#    Windows:  notepad .env
+#    macOS:    open -e .env
+#    Linux:    nano .env
+
+# 4. 构建并启动（首次会拉取镜像，约 1-2 分钟）
 docker compose up -d --build
+
+# 5. 等待服务就绪（app 容器 healthcheck 通过即可）
+docker compose ps
+# 看到 app 容器状态为 healthy 即表示就绪
 ```
 
-服务默认监听 `http://localhost:8080`。启动前必须复制 `.env.example` 为 `.env`，并把 `DEEPSEEK_API_KEY` 设置为真实 DeepSeek API key；未设置或仍为占位符时，应用会在启动阶段失败，避免绕过真实 LLM 链路。
+服务启动后监听 `http://localhost:8080`。
 
-## API 示例
+## 验证服务
 
 ```bash
+# 健康检查
+curl http://localhost:8080/health
+
+# 创建一条工单
 curl -X POST http://localhost:8080/tickets \
   -H "Content-Type: application/json" \
   -d '{"user_id":"u_001","text":"3栋402卫生间漏水，急"}'
-
-curl http://localhost:8080/tickets/tk_xxxxxx
-curl "http://localhost:8080/tickets?building=3&intent_type=plumbing&status=open"
-curl http://localhost:8080/health
 ```
 
-本地运行单元测试时安装开发依赖：
+POST 返回示例：
+
+```json
+{
+  "ticket_id": "tk_abc123",
+  "user_id": "u_001",
+  "text": "3栋402卫生间漏水，急",
+  "parsed": {
+    "building": "3",
+    "room": "402",
+    "intent_type": "plumbing",
+    "urgency": "high",
+    "summary": "3栋402卫生间漏水，急"
+  },
+  "assigned_to": {
+    "staff_id": "s_003",
+    "name": "...",
+    "role": "plumber"
+  },
+  "notification": {
+    "sent": true,
+    "via": "mock-bot"
+  },
+  "status": "open",
+  "created_at": "2026-05-30T12:00:00Z"
+}
+```
+
+## 公开测试脚本
+
+仓库提供了 3 个集成测试脚本（需要服务已启动）：
+
+```bash
+# 基本流程：创建工单 + 查询
+bash public-tests/test_basic.sh
+
+# 幂等性：重复提交返回相同 ticket_id
+bash public-tests/test_idempotency.sh
+
+# LLM 兜底：无意义文本不导致 500
+bash public-tests/test_llm_fallback.sh
+```
+
+脚本默认访问 `http://localhost:8080`，可通过环境变量覆盖：`BASE_URL=http://其他地址 bash public-tests/test_basic.sh`。
+
+## API 文档
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/health` | 健康检查 |
+| POST | `/tickets` | 创建工单（body: `{"user_id":"...","text":"..."}`） |
+| GET | `/tickets/{ticket_id}` | 查询单条工单 |
+| GET | `/tickets?building=&intent_type=&status=` | 列表查询（三个参数任意组合） |
+
+## 本地开发（不用 Docker）
+
+本地运行需要先启动 MongoDB 和 Redis，可以用 Docker 单独启动这两个服务：
+
+```bash
+# 只启动数据库服务
+docker compose up -d mongo redis
+
+# 安装 Python 依赖
+pip install -r requirements-dev.txt
+
+# 设置环境变量（Windows PowerShell 用 $env:DEEPSEEK_API_KEY = "sk-..."）
+export DEEPSEEK_API_KEY=sk-your-real-key
+export MONGO_URI=mongodb://localhost:27017
+export REDIS_URI=redis://localhost:6379
+export DB_NAME=desun
+export STAFF_JSON_PATH=./staff.json
+
+# 启动服务
+uvicorn src.main:app --host 0.0.0.0 --port 8080
+```
+
+运行单元测试（纯单元测试不需要数据库，集成测试需要 MongoDB/Redis）：
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+pytest -v
 ```
 
 ## 设计要点
@@ -37,7 +137,15 @@ pytest
 
 ## 索引
 
-启动时创建以下索引：`tickets(parsed.building, created_at)`、`tickets(parsed.intent_type, created_at)`、`tickets(status, created_at)`、`tickets(created_at)`、`notifications(ticket_id)`。列表查询实际使用 `parsed.building` 和 `parsed.intent_type` 路径。
+启动时自动创建以下 MongoDB 索引：
+
+| 集合 | 索引 | 用途 |
+|------|------|------|
+| tickets | `parsed.building` + `created_at` | 按楼栋筛选 |
+| tickets | `parsed.intent_type` + `created_at` | 按类型筛选 |
+| tickets | `status` + `created_at` | 按状态筛选 |
+| tickets | `created_at` | 时间排序 |
+| notifications | `ticket_id` | 按工单查通知 |
 
 ## LLM 模型选型
 
@@ -48,3 +156,10 @@ pytest
 3. **结构化输出**：支持 `response_format={"type": "json_object"}`，配合 Pydantic schema 校验，能稳定返回符合要求的 JSON，无需额外正则提取。
 4. **兼容性**：兼容 OpenAI SDK（`base_url=https://api.deepseek.com`），迁移成本低，无需引入额外依赖。
 
+## 停止服务
+
+```bash
+docker compose down
+```
+
+如需清除数据（MongoDB/Redis 数据卷）：`docker compose down -v`。
