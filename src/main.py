@@ -185,6 +185,8 @@ def staff_response(staff: dict[str, Any], match_rule: str) -> dict[str, str]:
 def serialize_ticket(doc: dict[str, Any]) -> dict[str, Any]:
     item = deepcopy(doc)
     item.pop("_id", None)
+    item.pop("user_id", None)
+    item.pop("text", None)
     for key in ("created_at", "sent_at"):
         if isinstance(item.get(key), datetime):
             item[key] = to_iso_z(item[key])

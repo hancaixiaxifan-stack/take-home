@@ -49,10 +49,8 @@ POST 返回示例：
 ```json
 {
   "ticket_id": "tk_abc123",
-  "user_id": "u_001",
-  "text": "3栋402卫生间漏水，急",
   "parsed": {
-    "building": "3",
+    "building": 3,
     "room": "402",
     "intent_type": "plumbing",
     "urgency": "high",
@@ -61,7 +59,7 @@ POST 返回示例：
   "assigned_to": {
     "staff_id": "s_003",
     "name": "...",
-    "role": "plumber"
+    "match_rule": "building"
   },
   "notification": {
     "sent": true,
