@@ -28,10 +28,11 @@ for i in "${!INPUTS[@]}"; do
   USER_ID="test_user_fallback_${i}_$(date +%s)"
 
   R=$(mktemp)
-  HTTP=$(curl -sS -o "$R" -w "%{http_code}" \
+  HTTP=$(printf '{"user_id":"%s","text":"%s"}' "$USER_ID" "$TEXT" | \
+    curl -sS -o "$R" -w "%{http_code}" \
     -X POST "$BASE_URL/tickets" \
     -H "Content-Type: application/json" \
-    -d "{\"user_id\": \"$USER_ID\", \"text\": \"$TEXT\"}" || true)
+    -d @- || true)
 
   # 严禁返回 5xx
   if [[ "$HTTP" =~ ^5 ]]; then
@@ -66,10 +67,12 @@ done
 
 # 最后再发一个正常文本，确保服务没"内伤"
 R=$(mktemp)
-HTTP=$(curl -sS -o "$R" -w "%{http_code}" \
+RECOVER_ID="test_recover_$(date +%s)"
+HTTP=$(printf '{"user_id":"%s","text":"%s"}' "$RECOVER_ID" "2栋101灯不亮了" | \
+  curl -sS -o "$R" -w "%{http_code}" \
   -X POST "$BASE_URL/tickets" \
   -H "Content-Type: application/json" \
-  -d "{\"user_id\": \"test_recover_$(date +%s)\", \"text\": \"2栋101灯不亮了\"}")
+  -d @-)
 [ "$HTTP" != "201" ] && { cat "$R"; fail "兜底之后服务无法处理正常请求（$HTTP），可能 LLM client 中毒"; }
 pass "兜底之后服务仍然能正常处理新请求 ✓"
 rm -f "$R"

@@ -18,10 +18,11 @@ pass() { echo "[PASS] $1"; }
 
 # --- 1. POST /tickets ---
 RESP_FILE=$(mktemp)
-HTTP_CODE=$(curl -sS -o "$RESP_FILE" -w "%{http_code}" \
+HTTP_CODE=$(printf '{"user_id":"%s","text":"%s"}' "$USER_ID" "$TEXT" | \
+  curl -sS -o "$RESP_FILE" -w "%{http_code}" \
   -X POST "$BASE_URL/tickets" \
   -H "Content-Type: application/json" \
-  -d "{\"user_id\": \"$USER_ID\", \"text\": \"$TEXT\"}") || fail "curl 请求失败，服务是否启动？"
+  -d @-) || fail "curl 请求失败，服务是否启动？"
 
 if [ "$HTTP_CODE" != "201" ]; then
   echo "Response body: $(cat "$RESP_FILE")"

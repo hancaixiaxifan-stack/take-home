@@ -18,10 +18,11 @@ pass() { echo "[PASS] $1"; }
 
 # --- 第一次提交 ---
 R1=$(mktemp); C1=$(mktemp)
-HTTP1=$(curl -sS -o "$R1" -w "%{http_code}" \
+HTTP1=$(printf '{"user_id":"%s","text":"%s"}' "$USER_ID" "$TEXT" | \
+  curl -sS -o "$R1" -w "%{http_code}" \
   -X POST "$BASE_URL/tickets" \
   -H "Content-Type: application/json" \
-  -d "{\"user_id\": \"$USER_ID\", \"text\": \"$TEXT\"}")
+  -d @-)
 
 [ "$HTTP1" != "201" ] && { cat "$R1"; fail "第一次提交期望 201，实际 $HTTP1"; }
 TICKET1=$(jq -r '.ticket_id // empty' "$R1")
@@ -31,10 +32,11 @@ pass "第一次提交：ticket_id=$TICKET1，HTTP=201"
 # --- 第二次提交（同内容）---
 sleep 1   # 给一点时间让幂等 key 写入 Redis
 R2=$(mktemp)
-HTTP2=$(curl -sS -o "$R2" -w "%{http_code}" \
+HTTP2=$(printf '{"user_id":"%s","text":"%s"}' "$USER_ID" "$TEXT" | \
+  curl -sS -o "$R2" -w "%{http_code}" \
   -X POST "$BASE_URL/tickets" \
   -H "Content-Type: application/json" \
-  -d "{\"user_id\": \"$USER_ID\", \"text\": \"$TEXT\"}")
+  -d @-)
 
 if [ "$HTTP2" != "200" ]; then
   echo "Response body: $(cat "$R2")"
@@ -48,10 +50,11 @@ pass "第二次提交（同内容）：HTTP=200，ticket_id 一致 ✓"
 # --- 第三次提交（改文本）---
 TEXT3="5栋301水管漏了"
 R3=$(mktemp)
-HTTP3=$(curl -sS -o "$R3" -w "%{http_code}" \
+HTTP3=$(printf '{"user_id":"%s","text":"%s"}' "$USER_ID" "$TEXT3" | \
+  curl -sS -o "$R3" -w "%{http_code}" \
   -X POST "$BASE_URL/tickets" \
   -H "Content-Type: application/json" \
-  -d "{\"user_id\": \"$USER_ID\", \"text\": \"$TEXT3\"}")
+  -d @-)
 
 [ "$HTTP3" != "201" ] && { cat "$R3"; fail "第三次（不同文本）期望 201，实际 $HTTP3"; }
 TICKET3=$(jq -r '.ticket_id // empty' "$R3")
