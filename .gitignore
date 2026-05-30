@@ -1,4 +1,5 @@
 .env
+ORIGINAL_README.md
 __pycache__/
 *.py[cod]
 .pytest_cache/
