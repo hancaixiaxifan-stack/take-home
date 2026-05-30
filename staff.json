@@ -1,0 +1,40 @@
+{
+  "_note": "样例员工配置数据（脱敏，姓名/电话均为虚构）。候选人请不要修改此文件结构。",
+  "community": "样板花园",
+  "default_staff_id": "s_000",
+
+  "staff": [
+    { "staff_id": "s_000", "name": "前台兜底", "role": "frontdesk", "phone": "13800138000" },
+    { "staff_id": "s_001", "name": "张管家", "role": "housekeeper", "phone": "13800138001" },
+    { "staff_id": "s_002", "name": "王管家", "role": "housekeeper", "phone": "13800138002" },
+    { "staff_id": "s_003", "name": "刘管家", "role": "housekeeper", "phone": "13800138003" },
+    { "staff_id": "s_007", "name": "李工", "role": "plumber",     "phone": "13800138007" },
+    { "staff_id": "s_008", "name": "陈工", "role": "plumber",     "phone": "13800138008" },
+    { "staff_id": "s_011", "name": "赵电工", "role": "electrician","phone": "13800138011" },
+    { "staff_id": "s_021", "name": "孙保洁", "role": "cleaner",   "phone": "13800138021" },
+    { "staff_id": "s_022", "name": "周保洁", "role": "cleaner",   "phone": "13800138022" },
+    { "staff_id": "s_031", "name": "吴保安", "role": "security",  "phone": "13800138031" },
+    { "staff_id": "s_041", "name": "郑维修", "role": "facility",  "phone": "13800138041" }
+  ],
+
+  "buildings": [
+    { "building": 1, "staff_ids": ["s_001"] },
+    { "building": 2, "staff_ids": ["s_001"] },
+    { "building": 3, "staff_ids": ["s_002", "s_007"] },
+    { "building": 4, "staff_ids": ["s_002"] },
+    { "building": 5, "staff_ids": ["s_003"] },
+    { "building": 6, "staff_ids": ["s_006"] },
+    { "building": 7, "staff_ids": ["s_003", "s_008"] }
+  ],
+
+  "dispatch_rules": [
+    { "intent_type": "plumbing",         "staff_ids": ["s_007", "s_008"] },
+    { "intent_type": "electrical",       "staff_ids": ["s_011"] },
+    { "intent_type": "appliance",        "staff_ids": ["s_011", "s_041"] },
+    { "intent_type": "cleaning",         "staff_ids": ["s_021", "s_022"] },
+    { "intent_type": "security",         "staff_ids": ["s_031"] },
+    { "intent_type": "public_facility",  "staff_ids": ["s_041"] },
+    { "intent_type": "complaint",        "staff_ids": ["s_001", "s_002", "s_003"] },
+    { "intent_type": "other",            "staff_ids": [] }
+  ]
+}

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>派单系统 · Demo UI</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 880px; margin: 32px auto; padding: 0 16px; color: #1f1f1f; background: #fafafa; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: #888; font-size: 13px; margin-bottom: 24px; }
+  .card { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+  .row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .row label { width: 88px; padding-top: 8px; color: #555; font-size: 13px; }
+  input, textarea, button { font-size: 14px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-family: inherit; }
+  input, textarea { flex: 1; }
+  textarea { resize: vertical; min-height: 60px; }
+  button { background: #1677ff; color: #fff; border: none; cursor: pointer; padding: 8px 20px; }
+  button:hover { background: #4096ff; }
+  button:disabled { background: #d9d9d9; cursor: not-allowed; }
+  .result { white-space: pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; background: #f5f5f5; padding: 12px; border-radius: 4px; max-height: 320px; overflow: auto; }
+  .ok { color: #389e0d; }
+  .err { color: #cf1322; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 6px; }
+  .tag-blue { background: #e6f4ff; color: #1677ff; }
+  .tag-green { background: #f6ffed; color: #389e0d; }
+  .tag-orange { background: #fff7e6; color: #d46b08; }
+  .tag-red { background: #fff1f0; color: #cf1322; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+  th { background: #fafafa; font-weight: 500; color: #666; }
+  .meta { font-size: 12px; color: #999; }
+</style>
+</head>
+<body>
+
+<h1>派单系统 · Demo UI</h1>
+<p class="subtitle">候选人评审用的最小可视化工具 · 单文件 HTML，零依赖</p>
+
+<div class="card">
+  <div class="row">
+    <label>服务地址</label>
+    <input id="baseUrl" value="http://localhost:8080">
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 12px">创建工单</h3>
+  <div class="row">
+    <label>user_id</label>
+    <input id="userId" value="demo_user_1">
+  </div>
+  <div class="row">
+    <label>报修文本</label>
+    <textarea id="text">3栋402卫生间漏水严重，急死了赶紧来人</textarea>
+  </div>
+  <div class="row">
+    <label></label>
+    <button id="submitBtn" onclick="createTicket()">POST /tickets</button>
+  </div>
+  <div id="createResult"></div>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 12px;display:flex;justify-content:space-between;align-items:center">
+    工单列表
+    <span>
+      <input id="filterBuilding" placeholder="building" style="width:80px">
+      <input id="filterIntent" placeholder="intent_type" style="width:110px">
+      <select id="filterStatus" style="padding:8px 12px;border:1px solid #d9d9d9;border-radius:4px;font-size:14px">
+        <option value="">all status</option>
+        <option value="open">open</option>
+        <option value="parse_failed">parse_failed</option>
+      </select>
+      <button onclick="loadList()" style="padding:4px 12px">刷新</button>
+    </span>
+  </h3>
+  <div id="listResult"><p class="meta">点击刷新加载</p></div>
+</div>
+
+<div id="detailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center" onclick="if(event.target===this)closeDetail()">
+  <div style="background:#fff;border-radius:8px;padding:20px;max-width:640px;width:90%;max-height:80vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">工单详情</h3>
+      <button onclick="closeDetail()" style="background:#fff;color:#888;border:1px solid #d9d9d9;padding:4px 10px">关闭</button>
+    </div>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const baseUrl = () => $('baseUrl').value.replace(/\/$/, '');
+const urgencyTag = { low: 'tag-blue', normal: 'tag-blue', high: 'tag-orange', urgent: 'tag-red' };
+
+async function createTicket() {
+  const btn = $('submitBtn'); btn.disabled = true; btn.textContent = '提交中...';
+  const out = $('createResult'); out.innerHTML = '';
+  try {
+    const resp = await fetch(`${baseUrl()}/tickets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: $('userId').value, text: $('text').value }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    const cls = resp.ok ? 'ok' : 'err';
+    out.innerHTML = `
+      <p class="${cls}"><strong>HTTP ${resp.status}</strong> ${resp.status === 200 ? '(幂等命中)' : resp.status === 201 ? '(新建)' : ''}</p>
+      ${renderTicket(data)}
+      <details><summary class="meta">查看完整 JSON</summary><pre class="result">${JSON.stringify(data, null, 2)}</pre></details>
+    `;
+  } catch (e) {
+    out.innerHTML = `<p class="err">请求失败：${e.message}（服务是否启动？跨域问题？）</p>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'POST /tickets';
+  }
+}
+
+function renderTicket(t) {
+  if (!t.ticket_id) return '';
+  const p = t.parsed || {}; const a = t.assigned_to || {}; const n = t.notification || {};
+  return `
+    <p>
+      <span class="tag tag-blue">${t.ticket_id}</span>
+      <span class="tag ${urgencyTag[p.urgency] || 'tag-blue'}">${p.urgency || '-'}</span>
+      <span class="tag tag-green">${p.intent_type || '-'}</span>
+      ${n.sent ? '<span class="tag tag-green">✓ ' + (n.via || 'notified') + '</span>' : '<span class="tag tag-red">✗ 未通知</span>'}
+    </p>
+    <p class="meta">楼栋 ${p.building ?? '-'} · 房间 ${p.room || '-'} · ${p.summary || ''}</p>
+    <p class="meta">→ 派给 <strong>${a.name || a.staff_id || '-'}</strong>（${a.match_rule || '-'}）</p>
+  `;
+}
+
+async function loadList() {
+  const out = $('listResult'); out.innerHTML = '<p class="meta">加载中...</p>';
+  const qs = new URLSearchParams();
+  if ($('filterBuilding').value) qs.set('building', $('filterBuilding').value);
+  if ($('filterIntent').value) qs.set('intent_type', $('filterIntent').value);
+  if ($('filterStatus').value) qs.set('status', $('filterStatus').value);
+  try {
+    const resp = await fetch(`${baseUrl()}/tickets?${qs}`);
+    const data = await resp.json();
+    // 按 spec §2.7：标准是 { items, total }，但容错老/错版本
+    const items = Array.isArray(data) ? data : (data.items || data.tickets || data.data || []);
+    const total = data.total ?? items.length;
+    if (!items.length) { out.innerHTML = '<p class="meta">无数据</p>'; return; }
+    out.innerHTML = `
+      <p class="meta">共 ${total} 条 · 显示 ${items.length} 条</p>
+      <table>
+        <thead><tr><th>ticket_id</th><th>楼栋/房间</th><th>类型</th><th>紧急度</th><th>派给</th><th>状态</th><th>创建时间</th><th></th></tr></thead>
+        <tbody>${items.map(t => {
+          const p = t.parsed || t; const a = t.assigned_to || {};
+          const statusCls = t.status === 'parse_failed' ? 'tag-red' : 'tag-green';
+          const createdAt = t.created_at ? new Date(t.created_at).toLocaleString('zh-CN', {hour12: false}).slice(5) : '-';
+          return `<tr>
+            <td><code>${t.ticket_id || '-'}</code></td>
+            <td>${p.building ?? '-'} / ${p.room || '-'}</td>
+            <td>${p.intent_type || '-'}</td>
+            <td><span class="tag ${urgencyTag[p.urgency] || 'tag-blue'}">${p.urgency || '-'}</span></td>
+            <td>${a.name || a.staff_id || '-'}</td>
+            <td><span class="tag ${statusCls}">${t.status || 'open'}</span></td>
+            <td class="meta">${createdAt}</td>
+            <td><button onclick="showDetail('${t.ticket_id}')" style="padding:2px 8px;font-size:12px">详情</button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    `;
+  } catch (e) {
+    out.innerHTML = `<p class="err">加载失败：${e.message}</p>`;
+  }
+}
+
+async function showDetail(id) {
+  const modal = $('detailModal'); const body = $('detailBody');
+  modal.style.display = 'flex'; body.innerHTML = '<p class="meta">加载中...</p>';
+  try {
+    const resp = await fetch(`${baseUrl()}/tickets/${id}`);
+    const data = await resp.json();
+    const cls = resp.ok ? 'ok' : 'err';
+    body.innerHTML = `
+      <p class="${cls}"><strong>HTTP ${resp.status}</strong> GET /tickets/${id}</p>
+      ${renderTicket(data)}
+      <pre class="result">${JSON.stringify(data, null, 2)}</pre>
+    `;
+  } catch (e) {
+    body.innerHTML = `<p class="err">加载失败：${e.message}</p>`;
+  }
+}
+
+function closeDetail() { $('detailModal').style.display = 'none'; }
+</script>
+
+</body>
+</html>
