@@ -3,7 +3,6 @@ import hashlib
 import json
 import os
 import random
-import re
 import uuid
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -96,8 +95,9 @@ async def lifespan(_: FastAPI):
     mongo_client = AsyncIOMotorClient(MONGO_URI)
     db = mongo_client[DB_NAME]
     redis_client = Redis.from_url(REDIS_URI, decode_responses=True)
+    api_key = require_deepseek_api_key(DEEPSEEK_API_KEY)
     llm_client = AsyncOpenAI(
-        api_key=DEEPSEEK_API_KEY or "sk-placeholder",
+        api_key=api_key,
         base_url="https://api.deepseek.com",
     )
 
@@ -134,6 +134,13 @@ def load_staff_config(path: str) -> dict[str, Any]:
     if not staff_path.is_absolute():
         staff_path = Path.cwd() / staff_path
     return json.loads(staff_path.read_text(encoding="utf-8"))
+
+
+def require_deepseek_api_key(value: str) -> str:
+    api_key = value.strip()
+    if not api_key or api_key in {"sk-your-key-here", "sk-placeholder"}:
+        raise RuntimeError("DEEPSEEK_API_KEY must be set to a real DeepSeek API key")
+    return api_key
 
 
 def assign_staff(parsed: ParsedInfo, config: dict[str, Any]) -> dict[str, str]:
@@ -191,9 +198,6 @@ def to_iso_z(value: datetime) -> str:
 
 
 async def parse_ticket_text(text: str) -> ParsedInfo:
-    if should_use_local_parser():
-        return local_parse(text)
-
     try:
         assert llm_client is not None
         response = await llm_client.chat.completions.create(
@@ -214,77 +218,6 @@ async def parse_ticket_text(text: str) -> ParsedInfo:
         raise
     except Exception as exc:
         raise ParseError(str(exc)) from exc
-
-
-def should_use_local_parser() -> bool:
-    key = DEEPSEEK_API_KEY.strip()
-    return not key or key == "sk-your-key-here" or key == "sk-placeholder"
-
-
-def local_parse(text: str) -> ParsedInfo:
-    normalized = text.strip()
-    if len(normalized) <= 1 or re.fullmatch(r"[\W_]+", normalized, flags=re.UNICODE):
-        return ParsedInfo(
-            building=None,
-            room=None,
-            intent_type="other",
-            urgency="low",
-            summary="无法识别的报修内容",
-        )
-
-    building = extract_building(normalized)
-    room = extract_room(normalized, building)
-    intent_type = infer_intent(normalized)
-    urgency = infer_urgency(normalized)
-    summary = normalized[:50] if intent_type != "other" else "无法识别的报修内容"
-    return ParsedInfo(
-        building=building,
-        room=room,
-        intent_type=intent_type,
-        urgency=urgency,
-        summary=summary,
-    )
-
-
-def extract_building(text: str) -> int | None:
-    match = re.search(r"(\d{1,2})\s*(?:栋|幢|楼|号楼|鏍)", text)
-    if match:
-        return int(match.group(1))
-    match = re.match(r"^\s*(\d{1,2})[-栋幢楼鏍]", text)
-    return int(match.group(1)) if match else None
-
-
-def extract_room(text: str, building: int | None) -> str | None:
-    room_match = re.search(r"(?:室|房间|room)?\s*(\d{3,4})\s*(?:室|房)?", text)
-    if not room_match:
-        return None
-
-    room = room_match.group(1)
-    if building is not None and room.startswith(str(building)) and len(room) == 4:
-        return room[1:]
-    return room
-
-
-def infer_intent(text: str) -> IntentType:
-    rules: list[tuple[IntentType, tuple[str, ...]]] = [
-        ("plumbing", ("漏水", "水管", "水龙头", "马桶", "下水", "姘", "婕", "椹")),
-        ("electrical", ("电", "灯", "跳闸", "插座", "鐏", "闸")),
-        ("appliance", ("空调", "热水器", "冰箱", "洗衣机")),
-        ("cleaning", ("保洁", "垃圾", "卫生", "清理")),
-        ("security", ("保安", "门禁", "可疑", "陌生")),
-        ("public_facility", ("电梯", "路灯", "绿化", "公共", "设施")),
-        ("complaint", ("投诉", "纠纷", "吵", "噪音")),
-    ]
-    for intent, keywords in rules:
-        if any(keyword in text for keyword in keywords):
-            return intent
-    return "other"
-
-
-def infer_urgency(text: str) -> Urgency:
-    if any(keyword in text for keyword in ("急", "马上", "立刻", "严重", "赶紧", "鎬")):
-        return "high"
-    return "normal"
 
 
 async def write_notification(

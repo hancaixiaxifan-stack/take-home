@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.main import ParsedInfo, assign_staff, serialize_ticket
+from src.main import ParsedInfo, assign_staff, require_deepseek_api_key, serialize_ticket
 
 
 @pytest.fixture()
@@ -82,3 +82,13 @@ def test_serialize_ticket_removes_mongo_id_and_formats_created_at():
 
     assert "_id" not in serialized
     assert serialized["created_at"] == "2026-05-30T08:00:00Z"
+
+
+@pytest.mark.parametrize("value", ["", "   ", "sk-your-key-here", "sk-placeholder"])
+def test_require_deepseek_api_key_rejects_missing_or_placeholder(value):
+    with pytest.raises(RuntimeError, match="DEEPSEEK_API_KEY"):
+        require_deepseek_api_key(value)
+
+
+def test_require_deepseek_api_key_accepts_real_looking_key():
+    assert require_deepseek_api_key("sk-real-value") == "sk-real-value"

@@ -6,7 +6,7 @@
 docker compose up -d --build
 ```
 
-服务默认监听 `http://localhost:8080`。如果有真实 DeepSeek key，可复制 `.env.example` 为 `.env` 并设置 `DEEPSEEK_API_KEY`；未设置或仍为占位符时，服务会使用本地启发式解析器，方便公开测试和前端页面在无 key 环境下运行。
+服务默认监听 `http://localhost:8080`。启动前必须复制 `.env.example` 为 `.env`，并把 `DEEPSEEK_API_KEY` 设置为真实 DeepSeek API key；未设置或仍为占位符时，应用会在启动阶段失败，避免绕过真实 LLM 链路。
 
 ## API 示例
 
@@ -23,7 +23,7 @@ curl http://localhost:8080/health
 ## 设计要点
 
 - FastAPI 所有业务逻辑集中在 `src/main.py`，使用 `motor` 访问 MongoDB、`redis.asyncio` 实现 5 分钟幂等 key。
-- LLM 路径使用 OpenAI SDK，`base_url=https://api.deepseek.com`，`model=deepseek-chat`，并开启 `response_format={"type":"json_object"}`；返回值必须经过 `ParsedInfo` Pydantic schema 校验。
+- LLM 路径只使用 DeepSeek：OpenAI SDK，`base_url=https://api.deepseek.com`，`model=deepseek-chat`，并开启 `response_format={"type":"json_object"}`；返回值必须经过 `ParsedInfo` Pydantic schema 校验。
 - 派单严格按楼栋、类型、兜底顺序。楼栋规则中的 `staff_id` 不存在时不会分配给无效人员，会继续尝试类型规则。
 - Mock 通知写入 MongoDB `notifications` 集合，API 返回 `{ "sent": true, "via": "mock-bot" }`。
 - CORS 允许所有来源，支持直接打开 `frontend/index.html` 访问本地服务。
