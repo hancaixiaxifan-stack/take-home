@@ -54,11 +54,11 @@
 - **理由**：评审脚本大概率用宽松校验（检查必填字段是否存在，而非拒绝多余字段），公开测试脚本也是这样做的。保留这两个字段利大于弊：前端 `frontend/index.html` 的列表和详情页会展示工单原文，去掉 `user_id` 和 `text` 反而让 UI 信息不完整。JSON API 中响应多字段是常见做法，不会导致客户端解析失败。
 - **耗时**：约 10 分钟（含审查响应格式和检查公开测试脚本的校验逻辑）。
 
-### 决策 7：修复公开测试脚本在 Windows Git Bash 下的中文编码问题
+### 决策 7：发现公开测试脚本的跨平台问题后选择不修改
 
-- **场景**：Docker 部署完成后，我在本地跑 `bash public-tests/test_basic.sh` 验证服务，三个脚本全部返回 HTTP 400 `{"detail":"There was an error parsing the body"}`。服务本身是正常的（health check 通过，手动用 ASCII 文本 POST 能成功），问题出在测试脚本本身。
-- **我 prompt 了什么**：我把 400 错误和 app 日志贴给 Claude Code，问它为什么中文文本 POST 失败但 ASCII 文本能成功。我们逐步排查：先试了双引号转义、`--data-raw`，都不行；最后用 `printf | curl -d @-` 管道方式绕过了问题。
-- **AI 输出**：Claude Code 定位到根因是 Windows Git Bash 的 curl 对 `-d` 参数里的中文字符编码处理有兼容性问题，Linux/macOS 不存在这个问题。建议把三个脚本里所有 `curl -d "{\"user_id\":...}"` 改成 `printf '{"user_id":"%s","text":"%s"}' ... | curl -d @-` 管道方式。
-- **是否采纳**：采纳，但我规范了修改范围——只改 curl 数据传递方式，不碰脚本的断言逻辑和流程结构，并在修改前用 git commit 保存了当前状态，确保可回退。
-- **理由**：AI 写的测试脚本在 Linux/macOS 上能跑，但它没有考虑到 Windows Git Bash 这个运行环境。这是我主动在跨平台验证中发现的问题——如果直接提交，在评审人的 Windows 机器上跑测试脚本就会全部失败，给人留下"项目跑不通"的第一印象。修复后三个脚本在 Windows Git Bash、Linux、macOS 上都能正常工作。
-- **耗时**：约 20 分钟（含排查、讨论、修改和验证）。
+- **场景**：Docker 部署完成后，我在 Windows Git Bash 下跑 `bash public-tests/test_basic.sh` 验证服务，三个脚本全部返回 HTTP 400。服务本身正常（health check 通过，ASCII 文本能 POST 成功），问题出在测试脚本与 Windows Git Bash 的兼容性上。
+- **我 prompt 了什么**：我把 400 错误和 app 日志贴给 Claude Code，逐步排查中文编码问题。AI 最终定位到根因：Windows Git Bash 的 curl 对 `-d` 参数里的中文字符编码处理有兼容性问题，Linux/macOS 没有这个问题。
+- **AI 输出**：Claude Code 建议修改三个公开测试脚本，把 `curl -d` 改成 `printf | curl -d @-` 管道方式，并直接帮我改好了。
+- **是否采纳**：弃用。我还原了所有 public-tests/ 的修改，改为在 README 中说明 Windows 用户需使用 WSL 或 PowerShell 运行测试。
+- **理由**：公开测试脚本是题目提供的评估边界，相当于"裁判"——修改裁判来让测试通过，即使修复的是真实的兼容性问题，也会让评审人质疑"这个人改了测试来适配自己的代码"。正确的做法是保持评估脚本原样，在 README 中说明平台限制。这也是一个教训：AI 给的修复方案技术上正确，但忽略了项目边界——它不知道 public-tests/ 是不该动的文件。
+- **耗时**：约 20 分钟（含排查、讨论、修改、还原和文档补充）。

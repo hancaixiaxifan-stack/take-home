@@ -89,6 +89,8 @@ bash public-tests/test_llm_fallback.sh
 
 脚本默认访问 `http://localhost:8080`，可通过环境变量覆盖：`BASE_URL=http://其他地址 bash public-tests/test_basic.sh`。
 
+> **Windows 用户注意**：公开测试脚本使用 bash + curl + jq，在 Windows Git Bash 下中文字符编码可能返回 400 错误。建议使用 WSL（Windows Subsystem for Linux）或 PowerShell 运行测试，或直接通过 Docker 容器内执行。
+
 ## API 文档
 
 | 方法 | 路径 | 说明 |
